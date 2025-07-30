@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cobb Angle Calculator</title>
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom styles */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Spinner for loading state */
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 flex items-center justify-center min-h-screen">
+
+    <div id="app-container" class="w-full max-w-5xl mx-auto p-4">
+
+        <!-- 1. Landing Page View -->
+        <div id="landing-view" class="text-center">
+            <div class="bg-white p-8 md:p-12 rounded-2xl shadow-lg">
+                <h1 class="text-4xl md:text-5xl font-bold text-slate-800">Cobb Angle Calculator</h1>
+                <p class="mt-2 text-lg font-medium text-slate-600">By Dr. Jorge Tabilo & Dr. Andrei Joaquim</p>
+                <p class="mt-6 max-w-2xl mx-auto text-slate-500">
+                    This application is designed for spine surgeons, allowing them to calculate the Cobb angle from spinal radiographs. The app uses a custom AI model to automatically detect vertebral landmarks, calculate spinal curvature, and provide editable measurement overlays and clinical insights.
+                </p>
+                <button id="start-calculation-btn" class="mt-8 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                    Calculate Angle
+                </button>
+            </div>
+        </div>
+
+        <!-- 2. Calculator View (Initially Hidden) -->
+        <div id="calculator-view" class="hidden">
+            <div class="bg-white p-6 rounded-2xl shadow-lg">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    
+                    <!-- Left Panel: Controls -->
+                    <div class="md:col-span-1 flex flex-col space-y-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-800">Controls</h2>
+                            <p class="text-sm text-slate-500">Load an image and adjust the lines.</p>
+                        </div>
+                        
+                        <div class="flex flex-col">
+                           <label for="image-upload" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg cursor-pointer text-center transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                                Upload X-Ray Image
+                            </label>
+                            <input type="file" id="image-upload" class="hidden" accept="image/*">
+                        </div>
+
+                        <div class="bg-gray-100 p-4 rounded-lg text-center">
+                            <h3 class="text-lg font-semibold text-slate-600">Cobb Angle</h3>
+                            <p id="angle-display" class="text-4xl font-bold text-blue-600">--°</p>
+                        </div>
+
+                        <button id="auto-detect-btn" class="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
+                            Re-run AI Detect
+                        </button>
+                        <button id="export-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors disabled:bg-green-300 disabled:cursor-not-allowed" disabled>
+                            Export as PNG
+                        </button>
+                        <button id="generate-report-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors disabled:bg-purple-300 disabled:cursor-not-allowed flex items-center justify-center" disabled>
+                            ✨ Generate Report Snippet
+                        </button>
+                        <button id="get-insights-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg transition-colors disabled:bg-teal-300 disabled:cursor-not-allowed flex items-center justify-center" disabled>
+                            ✨ Get Curvature Insights
+                        </button>
+                         <button id="back-btn" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2 px-4 rounded-lg transition-colors">
+                            Back to Home
+                        </button>
+                        
+                        <div id="status-message" class="text-sm text-center text-slate-500"></div>
+                    </div>
+
+                    <!-- Right Panel: Canvas for Image and Drawing -->
+                    <div class="md:col-span-2 relative w-full h-[500px] md:h-auto bg-gray-200 rounded-lg overflow-hidden flex items-center justify-center">
+                        <canvas id="canvas" class="absolute top-0 left-0 cursor-crosshair"></canvas>
+                        <div id="canvas-placeholder" class="text-slate-500">Please upload an image to begin.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Gemini Response -->
+    <div id="gemini-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full transform transition-all">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="modal-title" class="text-xl font-bold text-slate-800"></h3>
+                <button id="close-modal-btn" class="text-slate-500 hover:text-slate-800 text-3xl leading-none">&times;</button>
+            </div>
+            <div id="modal-content" class="text-slate-700 max-h-96 overflow-y-auto prose"></div>
+             <div class="text-right mt-4">
+                <button id="close-modal-btn-bottom" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 
+        =====================================================================
+        UNIFIED JAVASCRIPT BLOCK
+        All application logic is now contained within this single script tag
+        to ensure the DOM is ready before any code runs.
+        =====================================================================
+    -->
+    <script>
+        // --- DOM Elements ---
+        const landingView = document.getElementById('landing-view');
+        const calculatorView = document.getElementById('calculator-view');
+        const startBtn = document.getElementById('start-calculation-btn');
+        const backBtn = document.getElementById('back-btn');
+        const imageUpload = document.getElementById('image-upload');
+        const autoDetectBtn = document.getElementById('auto-detect-btn');
+        const exportBtn = document.getElementById('export-btn');
+        const angleDisplay = document.getElementById('angle-display');
+        const statusMessage = document.getElementById('status-message');
+        const canvas = document.getElementById('canvas');
+        const canvasPlaceholder = document.getElementById('canvas-placeholder');
+        const ctx = canvas.getContext('2d');
+        const generateReportBtn = document.getElementById('generate-report-btn');
+        const getInsightsBtn = document.getElementById('get-insights-btn');
+        const geminiModal = document.getElementById('gemini-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalContent = document.getElementById('modal-content');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const closeModalBtnBottom = document.getElementById('close-modal-btn-bottom');
+
+        // --- State ---
+        let img = new Image();
+        let points = []; 
+        let draggingPointIndex = null;
+        let currentAngle = 0;
+
+        // --- AI Model State ---
+        let yoloModel = null;
+        // **FIX**: The model path has been updated to the correct public URL.
+        const modelPath = 'https://jorgetabilo.github.io/Cobb/model/model.json';
+
+        /**
+         * Loads the TensorFlow.js model once and prepares it.
+         */
+        async function loadAiModel() {
+            if (yoloModel) {
+                console.log("AI Model already loaded.");
+                return;
+            }
+            statusMessage.textContent = 'Loading AI model...';
+            try {
+                yoloModel = await tf.loadGraphModel(modelPath);
+                
+                // Warm up the model for faster first inference
+                const warmUpTensor = tf.zeros([1, 640, 640, 3]);
+                await yoloModel.executeAsync(warmUpTensor);
+                tf.dispose(warmUpTensor);
+
+                console.log("YOLOv8 model loaded and warmed up.");
+                statusMessage.textContent = 'AI model ready. Upload an image.';
+            } catch (error) {
+                console.error("Error loading the AI model:", error);
+                statusMessage.textContent = 'Error: Could not load AI model. Please check the modelPath URL and browser console for details.';
+                yoloModel = null;
+            }
+        }
+
+        /**
+         * Detects Cobb lines using the loaded YOLOv8 model.
+         */
+        async function performAutoDetection() {
+            if (!yoloModel) {
+                statusMessage.textContent = 'AI model is not loaded. Please wait or check the URL.';
+                console.log('Model not loaded. Cannot perform detection.');
+                setInitialPointsManually();
+                drawAll();
+                return;
+            }
+            if (!img.src) {
+                statusMessage.textContent = 'Please upload an image first.';
+                return;
+            }
+
+            statusMessage.textContent = 'Running AI detection...';
+            
+            try {
+                // 1. Pre-process the image for the model
+                const tfImg = tf.browser.fromPixels(img);
+                const resizedImg = tf.image.resizeBilinear(tfImg, [640, 640]);
+                const inputTensor = resizedImg.expandDims(0).toFloat().div(255.0);
+
+                // 2. Make predictions
+                const predictions = await yoloModel.executeAsync(inputTensor);
+                
+                // 3. Post-process YOLOv8 output
+                const output = await predictions.array();
+                const transposed = tf.tensor(output[0]).transpose();
+                const data = await transposed.array();
+                
+                tf.dispose([tfImg, resizedImg, inputTensor, predictions, transposed]);
+
+                const classNames = ['top_line', 'bottom_line'];
+                const scoreThreshold = 0.4;
+                let detectedTopLine = null;
+                let detectedBottomLine = null;
+
+                for (const row of data) {
+                    const box = [row[0], row[1], row[2], row[3]]; // [cx, cy, w, h]
+                    const classScores = row.slice(4);
+                    
+                    let maxScore = 0;
+                    let classIndex = -1;
+                    for (let i = 0; i < classScores.length; i++) {
+                        if (classScores[i] > maxScore) {
+                            maxScore = classScores[i];
+                            classIndex = i;
+                        }
+                    }
+
+                    if (maxScore > scoreThreshold) {
+                        const className = classNames[classIndex];
+                        const detection = { score: maxScore, box: box };
+
+                        if (className === 'top_line' && (!detectedTopLine || maxScore > detectedTopLine.score)) {
+                            detectedTopLine = detection;
+                        } else if (className === 'bottom_line' && (!detectedBottomLine || maxScore > detectedBottomLine.score)) {
+                            detectedBottomLine = detection;
+                        }
+                    }
+                }
+                
+                if (!detectedTopLine || !detectedBottomLine) {
+                    throw new Error("Detection failed. Could not find both top and bottom lines.");
+                }
+
+                // 4. Convert relative coordinates to absolute canvas coordinates
+                const scaleX = canvas.width;
+                const scaleY = canvas.height;
+
+                const getPointsFromBox = (box) => {
+                    const [x_center_rel, y_center_rel, width_rel] = box;
+                    const x = x_center_rel * scaleX;
+                    const y = y_center_rel * scaleY;
+                    const w = width_rel * scaleX;
+                    const left = x - w / 2;
+                    const right = x + w / 2;
+                    return [{ x: left, y: y }, { x: right, y: y }];
+                };
+
+                const [topLeft, topRight] = getPointsFromBox(detectedTopLine.box);
+                const [bottomLeft, bottomRight] = getPointsFromBox(detectedBottomLine.box);
+                
+                points = (topLeft.y > bottomLeft.y) 
+                    ? [bottomLeft, bottomRight, topLeft, topRight] 
+                    : [topLeft, topRight, bottomLeft, bottomRight];
+
+                statusMessage.textContent = 'AI detection complete. Adjust points if needed.';
+                
+            } catch (error) {
+                console.error("AI Detection Error:", error);
+                statusMessage.textContent = `Error: ${error.message}`;
+                setInitialPointsManually();
+            } finally {
+                drawAll();
+            }
+        }
+
+        // --- View Navigation & State Reset ---
+        startBtn.addEventListener('click', () => {
+            landingView.classList.add('hidden');
+            calculatorView.classList.remove('hidden');
+            loadAiModel(); // Load the model when entering the calculator view
+        });
+
+        backBtn.addEventListener('click', () => {
+            calculatorView.classList.add('hidden');
+            landingView.classList.remove('hidden');
+            resetState();
+        });
+        
+        function resetState() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.width = 0;
+            canvas.height = 0;
+            canvasPlaceholder.classList.remove('hidden');
+            img = new Image();
+            points = [];
+            currentAngle = 0;
+            draggingPointIndex = null;
+            angleDisplay.textContent = '--°';
+            autoDetectBtn.disabled = true;
+            exportBtn.disabled = true;
+            generateReportBtn.disabled = true;
+            getInsightsBtn.disabled = true;
+            imageUpload.value = '';
+        }
+
+        // --- Image Loading & Canvas Setup ---
+        imageUpload.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    img.onload = async () => {
+                        canvasPlaceholder.classList.add('hidden');
+                        setupCanvas();
+                        autoDetectBtn.disabled = false;
+                        exportBtn.disabled = false;
+                        await performAutoDetection(); // Run detection on new image
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        });
+
+        function setupCanvas() {
+            const container = canvas.parentElement;
+            const containerRect = container.getBoundingClientRect();
+            const imgRatio = img.width / img.height;
+            const containerRatio = containerRect.width / containerRect.height;
+
+            if (containerRatio > imgRatio) {
+                canvas.height = containerRect.height;
+                canvas.width = img.width * (containerRect.height / img.height);
+            } else {
+                canvas.width = containerRect.width;
+                canvas.height = img.height * (containerRect.width / img.width);
+            }
+            canvas.style.left = `${(containerRect.width - canvas.width) / 2}px`;
+            canvas.style.top = `${(containerRect.height - canvas.height) / 2}px`;
+        }
+        
+        function setInitialPointsManually() {
+            const w = canvas.width;
+            const h = canvas.height;
+            points = [
+                { x: w * 0.2, y: h * 0.25 }, { x: w * 0.8, y: h * 0.25 },
+                { x: w * 0.2, y: h * 0.75 }, { x: w * 0.8, y: h * 0.75 }
+            ];
+        }
+
+        // --- Drawing Logic ---
+        function drawAll() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            if (points.length > 0) {
+                drawLines();
+                drawPoints();
+                calculateAndDisplayAngle();
+            }
+        }
+
+        function drawLines() {
+            if (points.length < 4) return;
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            ctx.lineTo(points[1].x, points[1].y);
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(points[2].x, points[2].y);
+            ctx.lineTo(points[3].x, points[3].y);
+            ctx.stroke();
+        }
+
+        function drawPoints() {
+            points.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 8, 0, 2 * Math.PI);
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.9)';
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+        }
+        
+        // --- Angle Calculation ---
+        function calculateAndDisplayAngle() {
+            if (points.length < 4) return;
+            const angle1 = Math.atan2(points[1].y - points[0].y, points[1].x - points[0].x);
+            const angle2 = Math.atan2(points[3].y - points[2].y, points[3].x - points[2].x);
+            let diff = Math.abs(angle1 - angle2) * (180 / Math.PI);
+            if (diff > 180) diff = 360 - diff;
+            
+            currentAngle = diff;
+            angleDisplay.textContent = `${currentAngle.toFixed(1)}°`;
+            
+            if(currentAngle > 0) {
+                generateReportBtn.disabled = false;
+                getInsightsBtn.disabled = false;
+            }
+        }
+
+        // --- Manual Adjustment (Dragging) ---
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            for (let i = 0; i < points.length; i++) {
+                const p = points[i];
+                const dist = Math.sqrt((mouseX - p.x)**2 + (mouseY - p.y)**2);
+                if (dist < 15) {
+                    draggingPointIndex = i;
+                    canvas.style.cursor = 'move';
+                    return;
+                }
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (draggingPointIndex === null) return;
+            const rect = canvas.getBoundingClientRect();
+            points[draggingPointIndex].x = e.clientX - rect.left;
+            points[draggingPointIndex].y = e.clientY - rect.top;
+            drawAll();
+        });
+
+        canvas.addEventListener('mouseup', () => { 
+            draggingPointIndex = null; 
+            canvas.style.cursor = 'crosshair'; 
+        });
+        
+        canvas.addEventListener('mouseleave', () => { 
+            draggingPointIndex = null; 
+            canvas.style.cursor = 'crosshair'; 
+        });
+
+        // --- Re-run Detection ---
+        autoDetectBtn.addEventListener('click', () => {
+            performAutoDetection(); 
+        });
+        
+        // --- Export & Gemini API ---
+        exportBtn.addEventListener('click', () => {
+            if (!img.src) return;
+            drawAll();
+            const angleValue = angleDisplay.textContent;
+            ctx.font = 'bold 48px Inter';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            const textMetrics = ctx.measureText(angleValue);
+            const x = canvas.width - textMetrics.width - 20;
+            const y = 60;
+            ctx.strokeText(angleValue, x, y);
+            ctx.fillText(angleValue, x, y);
+            const link = document.createElement('a');
+            link.download = 'cobb_angle_result.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            drawAll();
+        });
+
+        const API_KEY = "";
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
+
+        async function callGeminiAPI(prompt, button) {
+            const originalText = button.innerHTML;
+            button.innerHTML = `<div class="spinner"></div>Processing...`;
+            button.disabled = true;
+            try {
+                let response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+                });
+                if (!response.ok) throw new Error(`API request failed with status ${response.status}`);
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!text) throw new Error("Invalid response structure from API.");
+                return text.replace(/\n/g, '<br>');
+            } catch (error) {
+                console.error("Gemini API Error:", error);
+                return `An error occurred: ${error.message}.`;
+            } finally {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        generateReportBtn.addEventListener('click', async () => {
+            const prompt = `You are an orthopedic assistant. A spine X-ray analysis resulted in a Cobb angle of ${currentAngle.toFixed(1)} degrees. Generate a concise clinical report snippet for a patient's file. The snippet should include: 1. The measured Cobb angle. 2. The classification of the scoliosis severity (e.g., mild < 20°, moderate 20-45°, severe > 45°). 3. A placeholder for clinical notes. Format the output clearly using markdown-style headers.`;
+            modalTitle.textContent = "AI-Generated Report Snippet";
+            showModal("Loading report...");
+            modalContent.innerHTML = await callGeminiAPI(prompt, generateReportBtn);
+        });
+
+        getInsightsBtn.addEventListener('click', async () => {
+            const prompt = `In a clear and simple manner, suitable for explaining to a patient, describe the clinical significance of a scoliosis Cobb angle of ${currentAngle.toFixed(1)} degrees. Explain what the measurement represents and the general severity classification for this angle (mild, moderate, or severe). Do not give medical advice, but provide general educational information.`;
+            modalTitle.textContent = "AI-Powered Curvature Insights";
+            showModal("Loading insights...");
+            modalContent.innerHTML = await callGeminiAPI(prompt, getInsightsBtn);
+        });
+
+        function showModal(loadingText = "") {
+            modalContent.innerHTML = loadingText;
+            geminiModal.classList.remove('hidden');
+        }
+        function hideModal() {
+            geminiModal.classList.add('hidden');
+        }
+        closeModalBtn.addEventListener('click', hideModal);
+        closeModalBtnBottom.addEventListener('click', hideModal);
+        geminiModal.addEventListener('click', (e) => { if (e.target === geminiModal) hideModal(); });
+        
+        window.addEventListener('resize', () => {
+            if (img.src) {
+                setupCanvas();
+                drawAll();
+            }
+        });
+    </script>
+</body>
+</html>
